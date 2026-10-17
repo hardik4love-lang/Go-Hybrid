@@ -7,7 +7,7 @@
 //!   slices, arrays, strings (runes), maps (keys), channels, and borrow handles.
 //!
 //! Diagnostic contract:
-//!   - Concrete non-iterables reject as HYB-E2008 (rule LX13).
+//!   - Concrete non-iterables reject as HYB-E2009 (rule LX13).
 //!   - Unresolvable shapes fail-closed as HYB-E3005 (rule O4.9).
 //!   - Slices, arrays, strings, maps, channels, and integer ranges keep passing.
 
@@ -47,8 +47,8 @@ fn r1_local_int_iterable_rejected_e2008() {
     let r = check(R1_LOCAL_INT);
     let cs = codes(&r);
     assert!(
-        cs.iter().any(|c| c == "HYB-E2008"),
-        "expected HYB-E2008 for local int iterable, got {:?}",
+        cs.iter().any(|c| c == "HYB-E2009"),
+        "expected HYB-E2009 for local int iterable, got {:?}",
         cs
     );
     assert_eq!(r.verdict, Verdict::Reject);
@@ -70,8 +70,8 @@ fn r2_call_int_iterable_rejected_e2008() {
     let r = check(R2_CALL_INT);
     let cs = codes(&r);
     assert!(
-        cs.iter().any(|c| c == "HYB-E2008"),
-        "expected HYB-E2008 for call int iterable, got {:?}",
+        cs.iter().any(|c| c == "HYB-E2009"),
+        "expected HYB-E2009 for call int iterable, got {:?}",
         cs
     );
     assert_eq!(r.verdict, Verdict::Reject);
@@ -90,8 +90,8 @@ fn r3_local_bool_iterable_rejected_e2008() {
     let r = check(R3_LOCAL_BOOL);
     let cs = codes(&r);
     assert!(
-        cs.iter().any(|c| c == "HYB-E2008"),
-        "expected HYB-E2008 for bool iterable, got {:?}",
+        cs.iter().any(|c| c == "HYB-E2009"),
+        "expected HYB-E2009 for bool iterable, got {:?}",
         cs
     );
     assert_eq!(r.verdict, Verdict::Reject);
@@ -114,8 +114,8 @@ fn r4_struct_iterable_rejected_e2008() {
     let r = check(R4_STRUCT_ITERABLE);
     let cs = codes(&r);
     assert!(
-        cs.iter().any(|c| c == "HYB-E2008"),
-        "expected HYB-E2008 for struct iterable, got {:?}",
+        cs.iter().any(|c| c == "HYB-E2009"),
+        "expected HYB-E2009 for struct iterable, got {:?}",
         cs
     );
     assert_eq!(r.verdict, Verdict::Reject);
@@ -134,8 +134,8 @@ fn r5_two_var_non_iterable_rejected_e2008() {
     let r = check(R5_TWO_VAR_NON_ITERABLE);
     let cs = codes(&r);
     assert!(
-        cs.iter().any(|c| c == "HYB-E2008"),
-        "expected HYB-E2008 for two-variable non-iterable, got {:?}",
+        cs.iter().any(|c| c == "HYB-E2009"),
+        "expected HYB-E2009 for two-variable non-iterable, got {:?}",
         cs
     );
     assert_eq!(r.verdict, Verdict::Reject);
@@ -157,8 +157,8 @@ fn r6_closure_non_iterable_rejected_e2008() {
     let r = check(R6_CLOSURE_NON_ITERABLE);
     let cs = codes(&r);
     assert!(
-        cs.iter().any(|c| c == "HYB-E2008"),
-        "expected HYB-E2008 in closure body iterable, got {:?}",
+        cs.iter().any(|c| c == "HYB-E2009"),
+        "expected HYB-E2009 in closure body iterable, got {:?}",
         cs
     );
     assert_eq!(r.verdict, Verdict::Reject);
@@ -179,7 +179,7 @@ fn r7_void_call_iterable_rejected_e3005() {
     let r = check(R7_VOID_CALL_ITERABLE);
     let cs = codes(&r);
     assert!(
-        cs.iter().any(|c| c == "HYB-E3005" || c == "HYB-E2008"),
+        cs.iter().any(|c| c == "HYB-E3005" || c == "HYB-E2009"),
         "expected HYB-E3005/E2008 for unresolvable void call iterable, got {:?}",
         cs
     );

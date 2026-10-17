@@ -191,7 +191,7 @@
       "rule": "BUILDABLE"
     },
     {
-      "code": "HYB-E2008",
+      "code": "HYB-E2009",
       "name": "non-iterable-range",
       "category": "type",
       "severity": "error",
@@ -202,7 +202,7 @@
         "for integer counting, use an integer range: `for i in 0..n`",
         "for structs, range over a slice/map field of the struct"
       ],
-      "example": "x := 5; for v in x {}  // reject: HYB-E2008 — cannot range over int",
+      "example": "x := 5; for v in x {}  // reject: HYB-E2009 — cannot range over int",
       "rule": "LX13"
     },
     {
