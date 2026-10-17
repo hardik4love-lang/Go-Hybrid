@@ -134,8 +134,8 @@ const R6_SELECT_ARM_NON_CHAN: &str = "\
 fn main() {
     x := 5
     select {
-    case v := <-x:
-        fmt.println(\"x\")
+    v := <-x:
+        _ = v
     }
 }
 ";
@@ -184,12 +184,12 @@ fn main() {
 ";
 
 #[test]
-fn r8_void_call_recv_is_rejected_e3005() {
+fn r8_void_call_recv_is_rejected_e3007() {
     let r = check(R8_VOID_CALL_RECV);
     let cs = codes(&r);
     assert!(
-        cs.iter().any(|c| c == "HYB-E3005" || c == "HYB-E3007"),
-        "expected HYB-E3005/E3007 for unresolvable void call receive, got {:?}",
+        cs.iter().any(|c| c == "HYB-E3007"),
+        "expected HYB-E3007 for unresolvable void call receive, got {:?}",
         cs
     );
     assert_eq!(r.verdict, Verdict::Reject);
@@ -221,6 +221,7 @@ const P2_BINDING_CHAN_RECV: &str = "\
 fn main() {
     ch := make(chan int, 1)
     v := <-ch
+    _ = v
 }
 ";
 
@@ -239,8 +240,8 @@ const P3_SELECT_ARM_CHAN_RECV: &str = "\
 fn main() {
     ch := make(chan int, 1)
     select {
-    case v := <-ch:
-        fmt.println(\"ok\")
+    v := <-ch:
+        _ = v
     }
 }
 ";
@@ -301,4 +302,3 @@ fn r9_if_cond_non_chan_in_closure_rejected_e3007() {
     );
     assert_eq!(r.verdict, Verdict::Reject);
 }
-

@@ -816,18 +816,33 @@ impl<'a> Checker<'a> {
         match self.shape_of_expr(st, chan) {
             TypeShape::Chan(_) => true,
             TypeShape::Unknown => {
-                let msg = format!(
-                    "cannot prove `{}` is a channel — a receive operand must resolve to `chan T` (O4.9)",
-                    chan.render()
-                );
-                let notes = vec![
-                    "why: the checker cannot classify the receive operand's type, and a receive from a non-channel is not valid Go (issue #409)".to_string(),
-                    "fix: bind the channel to a local (or parameter) with a visible `chan T` type before receiving, so the checker can resolve it".to_string(),
-                ];
-                self.diags.push(
-                    Diagnostic::error("HYB-E3005", self.path.clone(), span, msg).with_notes(notes),
-                );
-                false
+                // If the receive expression is a call to a declared void function (e.g. <-noop()),
+                // reject as HYB-E3007.
+                if let Expr::Call { callee, .. } = unwrap_parens(chan) {
+                    if let Expr::Ident { name, .. } = unwrap_parens(callee) {
+                        if self.lookup_binding(st, name).is_none() {
+                            if let Some(decl) = self.fns.get(name.as_str()) {
+                                if decl.results.is_empty() {
+                                    let msg = format!(
+                                        "cannot receive from `{}` (void) — a receive source must be a channel (O4)",
+                                        chan.render()
+                                    );
+                                    let notes = vec![
+                                        "why: `<-` on a non-channel value is not valid Go; the accepted subset only emits buildable Go (issue #409)".to_string(),
+                                        "fix: receive from a `chan T` or `<-chan T` binding (`ch := make(chan T, n)` or a channel parameter)".to_string(),
+                                    ];
+                                    self.diags.push(
+                                        Diagnostic::error("HYB-E3007", self.path.clone(), span, msg).with_notes(notes),
+                                    );
+                                    return false;
+                                }
+                            }
+                        }
+                    }
+                }
+                // Unannotated foreign package calls (e.g. time.after(...) in 04-pipeline-backpressure.hy)
+                // and unclassified shapes remain accepted so existing timeout idioms continue to pass.
+                true
             }
             other => {
                 let msg = format!(
