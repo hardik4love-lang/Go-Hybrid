@@ -415,9 +415,55 @@ impl<'a> Checker<'a> {
                     vec![(**v).clone()]
                 }
             }
+            TypeShape::Str => one(TypeShape::Primitive),
             _ => vec![TypeShape::Unknown; n_vars.max(1)],
         }
     }
+
+    /// Check that an iterable operand in `for ... in <expr>` is a legal iterable
+    /// per SPEC-LANGUAGE LX13 (slice, array, string, map, channel, or borrow handle) (issue #411).
+    /// Concrete non-iterables reject as HYB-E2008; unproven shapes fail-closed as HYB-E3005 (O4.9).
+    pub(crate) fn check_range_iterable(&mut self, st: &FnState, expr: &Expr) -> bool {
+        let shape = self.shape_of_expr(st, expr);
+        match shape {
+            TypeShape::Slice(_)
+            | TypeShape::Array(_)
+            | TypeShape::Str
+            | TypeShape::Map(_, _)
+            | TypeShape::Chan(_)
+            | TypeShape::BorrowHandle(_) => true,
+            TypeShape::Unknown => {
+                let msg = format!(
+                    "cannot prove `{}` is an iterable — `for ... in` operand must resolve to slice, array, string, map, or channel (O4.9)",
+                    expr.render()
+                );
+                let notes = vec![
+                    "why: the checker cannot classify the range operand's type, and ranging over a non-iterable is not valid Go (issue #411)".to_string(),
+                    "fix: bind the collection to a local (or parameter) with a visible iterable type before iterating".to_string(),
+                ];
+                self.diags.push(
+                    hy_diag::Diagnostic::error("HYB-E3005", self.path.clone(), expr.span(), msg).with_notes(notes),
+                );
+                false
+            }
+            other => {
+                let msg = format!(
+                    "cannot range over `{}` ({}) — `for ... in` iterates slices, arrays, strings, maps, and channels (LX13)",
+                    expr.render(),
+                    other.render()
+                );
+                let notes = vec![
+                    "why: ranging over a non-iterable value is not valid Go; the accepted subset only emits buildable Go (issue #411)".to_string(),
+                    "fix: range over a slice, array, string, map, or channel; for integer loop counting, use `for i in 0..n` (ForKind::Range)".to_string(),
+                ];
+                self.diags.push(
+                    hy_diag::Diagnostic::error("HYB-E2008", self.path.clone(), expr.span(), msg).with_notes(notes),
+                );
+                false
+            }
+        }
+    }
+
 
     // -----------------------------------------------------------------------
     // Source types for diagnostics
