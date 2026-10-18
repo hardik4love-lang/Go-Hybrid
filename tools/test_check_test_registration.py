@@ -10,7 +10,9 @@ guard covers two invocation styles, and both are pinned here:
 import contextlib
 import importlib.util
 import io
+import os
 from pathlib import Path
+import subprocess
 import tempfile
 import unittest
 
@@ -43,6 +45,53 @@ class PatternExtractionTests(unittest.TestCase):
             guard.is_registered_direct("tests/test_install_runtime.py", workflow))
         self.assertFalse(
             guard.is_registered_direct("tests/test_install_runtime_extra.py", workflow))
+
+    def test_commented_discovery_is_not_a_registration(self):
+        self.assertEqual(guard.registered_patterns(
+            "  # python3 -m unittest discover -s tools -p test_disabled.py\n"), [])
+
+    def test_echoed_discovery_is_not_a_registration(self):
+        self.assertEqual(guard.registered_patterns(
+            "  echo 'python3 -m unittest discover -s tools -p test_disabled.py'\n"), [])
+
+    def test_direct_script_mentions_do_not_register_execution(self):
+        for workflow in (
+            "# python3 tests/test_disabled.py\n",
+            "echo 'python3 tests/test_disabled.py'\n",
+            "name: python3 tests/test_disabled.py\n",
+            "python3 other.py tests/test_disabled.py\n",
+            "python3 tests/test_live.py # tests/test_disabled.py\n",
+        ):
+            with self.subTest(workflow=workflow):
+                self.assertFalse(guard.is_registered_direct("tests/test_disabled.py", workflow))
+
+    def test_inline_run_and_quoted_patterns_are_registered(self):
+        self.assertEqual(guard.registered_patterns(
+            '  - run: python3 -m unittest discover -s tools -p "test_*.py" # run tests\n'),
+            ["test_*.py"])
+        self.assertTrue(guard.is_registered_direct(
+            "tests/test_live.py", "  run: python3 tests/test_live.py\n"))
+
+    def test_later_shell_command_does_not_supply_discovery_patterns(self):
+        for separator in (" && ", "&&", ";", " || ", " | "):
+            with self.subTest(separator=separator):
+                self.assertEqual(guard.registered_patterns(
+                    "python3 -m unittest discover -s tools -p test_live.py"
+                    + separator + "echo -p test_disabled.py\n"), ["test_live.py"])
+
+    def test_interpreter_flags_preserve_real_invocations(self):
+        self.assertEqual(guard.registered_patterns(
+            "python3 -B -W ignore -X dev -m unittest discover -s tools -p test_live.py\n"),
+            ["test_live.py"])
+        self.assertTrue(guard.is_registered_direct(
+            "tests/test_live.py", "python3 -u tests/test_live.py\n"))
+        self.assertFalse(guard.is_registered_direct(
+            "tests/test_live.py", "python3 -c 'print(1)' tests/test_live.py\n"))
+
+    def test_repeated_pattern_uses_the_last_value_like_unittest(self):
+        self.assertEqual(guard.registered_patterns(
+            "python3 -m unittest discover -s tools -p test_disabled.py -p test_live.py\n"),
+            ["test_live.py"])
 
 
 class RegistrationTests(unittest.TestCase):
@@ -100,6 +149,24 @@ class RegistrationTests(unittest.TestCase):
             workflow, ["tools/test_x.py", "tests/test_install_upgrade.py"])
         missing = guard.unregistered(root, text)
         self.assertEqual([rel for rel, _ in missing], ["tests/test_install_upgrade.py"])
+
+    def test_successful_shell_with_disabled_tests_must_fail_registration(self):
+        # The shell succeeds without running either deliberately failing test.
+        # The guard must detect the missing execution, not approve the mentions.
+        commands = (
+            "# python3 -m unittest discover -s tools -p test_disabled.py\n"
+            "echo 'python3 tests/test_disabled.py'\n"
+        )
+        root, text = self.build(commands, ["tools/test_disabled.py", "tests/test_disabled.py"])
+        for rel in ("tools/test_disabled.py", "tests/test_disabled.py"):
+            (root / rel).write_text(
+                "raise AssertionError('this test must be executed')\n", encoding="utf-8")
+        if os.name != "nt":
+            shell = subprocess.run(["/bin/sh", "-c", commands], cwd=root,
+                                   capture_output=True, text=True, timeout=10)
+            self.assertEqual(shell.returncode, 0, shell.stderr)
+        self.assertEqual([rel for rel, _ in guard.unregistered(root, text)],
+                         ["tools/test_disabled.py", "tests/test_disabled.py"])
 
 
 class GuardMisuseTests(unittest.TestCase):

@@ -25,21 +25,77 @@ import argparse
 import fnmatch
 import os
 import re
+import shlex
 import sys
 
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
-# One discovery invocation, quoted or bare pattern: `... discover -s X -p Y`.
-DISCOVER_RE = re.compile(r"unittest\s+discover\b[^\n]*?-p\s+'?([^'\s]+)")
+# The workflow uses explicit Python commands, either in a run block or in
+# a single-line run field. Do not count comments, step names, or echoed text
+# as execution. This is not a general shell/YAML interpreter.
+PYTHON_RE = re.compile(r"(?:.*/)?python(?:3(?:\.\d+)?)?\Z")
+PYTHON_FLAGS_RE = re.compile(r"-[bBdEIOPqRsSuvx]+\Z")
+
+
+def shell_words(line):
+    lexer = shlex.shlex(line, posix=True, punctuation_chars=";&|<>()")
+    lexer.whitespace_split = True
+    return list(lexer)
 
 # Directories whose test files this guard covers, and how each is invoked.
 DISCOVER_DIR = "tools"   # referenced through a `unittest discover -p` pattern
 DIRECT_DIRS = ("tests",)  # referenced by literal repo-relative path
 
 
+def python_commands(workflow_text):
+    """Yield arguments of explicit, single-line Python invocations."""
+    for line in workflow_text.splitlines():
+        line = line.strip()
+        inline_run = re.match(r"(?:-\s+)?run:\s*(.*)", line)
+        if inline_run:
+            line = inline_run.group(1)
+        try:
+            tokens = shell_words(line)
+            # A quoted YAML run scalar wraps the whole shell command.
+            if inline_run and len(tokens) == 1:
+                tokens = shell_words(tokens[0])
+        except ValueError:
+            continue
+        if tokens and PYTHON_RE.fullmatch(tokens[0]):
+            # Only the first simple command is covered. A following echo's
+            # -p flag must never become another unittest discovery pattern.
+            end = next((i for i, token in enumerate(tokens)
+                        if token and all(c in ";&|<>()" for c in token)), len(tokens))
+            arguments = tokens[1:end]
+            while arguments:
+                option = arguments[0]
+                if PYTHON_FLAGS_RE.fullmatch(option):
+                    arguments = arguments[1:]
+                elif option in ("-W", "-X", "--check-hash-based-pycs"):
+                    arguments = arguments[2:]
+                elif option.startswith(("-W", "-X")):
+                    arguments = arguments[1:]
+                elif option == "--":
+                    arguments = arguments[1:]
+                    break
+                else:
+                    break  # In particular, never interpret a -c string.
+            yield arguments
+
+
 def registered_patterns(workflow_text):
-    """Every `-p` pattern the workflow passes to `unittest discover`."""
-    return DISCOVER_RE.findall(workflow_text)
+    """Every explicit pattern passed by a recognized discovery command."""
+    patterns = []
+    for arguments in python_commands(workflow_text):
+        if arguments[:3] != ["-m", "unittest", "discover"]:
+            continue
+        pattern = None
+        for index, argument in enumerate(arguments[3:], 3):
+            if argument == "-p" and index + 1 < len(arguments):
+                pattern = arguments[index + 1]
+        if pattern is not None:
+            patterns.append(pattern)
+    return patterns
 
 
 def is_registered_discover(name, patterns):
@@ -47,9 +103,9 @@ def is_registered_discover(name, patterns):
 
 
 def is_registered_direct(relpath, workflow_text):
-    """A directly-invoked script is registered when its path is named."""
-    return re.search(r"(?<![\w./-])" + re.escape(relpath) + r"(?![\w.-])",
-                     workflow_text) is not None
+    """A script must be the Python entry point, not a comment or argument."""
+    return any(arguments and arguments[0] in (relpath, "./" + relpath)
+               for arguments in python_commands(workflow_text))
 
 
 def find_test_files(root, directory):
