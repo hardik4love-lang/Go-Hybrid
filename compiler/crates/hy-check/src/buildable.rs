@@ -288,7 +288,6 @@ fn type_uses_set(t: &TypeExpr) -> bool {
 
 fn expr_uses_set(e: &Expr) -> bool {
     match e {
-        Expr::Ident { name, .. } => name == "set" || name.starts_with("set["),
         Expr::Field { name, base, .. } => {
             name == "insert" || name == "contains" || name == "remove" || expr_uses_set(base)
         }
@@ -342,7 +341,7 @@ fn expr_uses_set(e: &Expr) -> bool {
                 || block_uses_set(body)
         }
         Expr::Paren { inner, .. } => expr_uses_set(inner),
-        Expr::Lit { .. } => false,
+        Expr::Ident { .. } | Expr::Lit { .. } => false,
     }
 }
 
