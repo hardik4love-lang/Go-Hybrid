@@ -261,6 +261,8 @@ struct Collector<'a> {
     /// (`return v` in a `(value, error)` fn emits `return v, nil`, the E3
     /// sugar; corpus 13).
     fn_results_error_tail: bool,
+    /// Type parameter names declared on the current function (issue #778).
+    fn_type_params: HashSet<String>,
     defines: Vec<Define>,
     /// Every identifier mentioned in the file plus every dotted type root —
     /// the import-usage set (the emitter's declared-import header needs it).
@@ -282,6 +284,7 @@ pub(crate) fn check_buildable(ck: &mut Checker<'_>) {
             fn_results: Vec::new(),
             fn_results_all_named: false,
             fn_results_error_tail: false,
+            fn_type_params: HashSet::new(),
             defines: Vec::new(),
             roots: HashSet::new(),
             diags: Vec::new(),
@@ -510,10 +513,15 @@ impl<'a> Collector<'a> {
         let outer = std::mem::replace(&mut self.fn_results, result_kinds);
         let outer_named = std::mem::replace(&mut self.fn_results_all_named, all_named);
         let outer_err = std::mem::replace(&mut self.fn_results_error_tail, error_tail);
+        let outer_tp = std::mem::replace(
+            &mut self.fn_type_params,
+            f.type_params.iter().map(|tp| tp.name.clone()).collect(),
+        );
         self.block_stmts(body);
         self.fn_results = outer;
         self.fn_results_all_named = outer_named;
         self.fn_results_error_tail = outer_err;
+        self.fn_type_params = outer_tp;
         self.pop_scope();
     }
 
@@ -753,7 +761,7 @@ impl<'a> Collector<'a> {
                 self.check_return(values, *span);
             }
             Stmt::Task { callee, args, .. } => {
-                self.expr(callee);
+                self.expr_callee(callee);
                 for a in args {
                     self.expr(&a.value);
                 }
@@ -843,6 +851,13 @@ impl<'a> Collector<'a> {
     fn place(&mut self, p: &Place, op: AssignOp) {
         match &p.kind {
             PlaceKind::Ident(n) => {
+                if self.is_type_name(n) && self.lookup_kind(n).is_none() && !self.ck.fns.contains_key(n) {
+                    self.emit_e1002(
+                        p.span,
+                        format!("cannot assign to `{}`: `{}` is a type, not a variable (HYB-E1002)", n, n),
+                        "type names cannot be used as assignment targets",
+                    );
+                }
                 // A bare `x = v` store is the ONE target form Go does not
                 // count as a read; `x++`, `x += 1` and every non-ident
                 // target (`x[k] = v`, `x.f = v`, `&x`) read the root.
@@ -895,7 +910,10 @@ impl<'a> Collector<'a> {
 
     fn expr(&mut self, e: &Expr) {
         match e {
-            Expr::Ident { name, .. } => self.read(name),
+            Expr::Ident { name, span } => {
+                self.check_type_name_value_position(name, *span);
+                self.read(name);
+            }
             Expr::Lit { .. } => {}
             Expr::Interp { parts, .. } => {
                 for p in parts {
@@ -966,8 +984,17 @@ impl<'a> Collector<'a> {
             Expr::Call {
                 callee, args, span, ..
             } => {
-                self.expr(callee);
-                for a in args {
+                let bare_callee = unwrap_parens(callee);
+                let is_type_arg_builtin = matches!(
+                    bare_callee,
+                    Expr::Ident { name, .. }
+                        if (name == "make" || name == "new") && !self.ck.fns.contains_key(name.as_str())
+                );
+                self.expr_callee(callee);
+                for (i, a) in args.iter().enumerate() {
+                    if is_type_arg_builtin && i == 0 {
+                        continue;
+                    }
                     self.expr(&a.value);
                 }
                 // #682 U7: every argument must be exactly one value, except
@@ -1068,6 +1095,75 @@ impl<'a> Collector<'a> {
                 self.pop_scope();
             }
             Expr::Paren { inner, .. } => self.expr(inner),
+        }
+    }
+
+    fn expr_callee(&mut self, callee: &Expr) {
+        let bare = unwrap_parens(callee);
+        match bare {
+            Expr::Ident { name, .. } => {
+                if !self.is_type_name(name) {
+                    self.read(name);
+                }
+            }
+            _ => self.expr(callee),
+        }
+    }
+
+    fn is_type_name(&self, name: &str) -> bool {
+        let base = Checker::base_named_type_str(name);
+        self.fn_type_params.contains(base)
+            || self.ck.structs.contains_key(base)
+            || self.ck.struct_type_params.contains_key(base)
+            || self.ck.type_aliases.contains_key(base)
+            || self.ck.enums.contains_key(base)
+            || matches!(
+                base,
+                "int"
+                    | "i8"
+                    | "int8"
+                    | "i16"
+                    | "int16"
+                    | "i32"
+                    | "int32"
+                    | "i64"
+                    | "int64"
+                    | "u8"
+                    | "uint8"
+                    | "u16"
+                    | "uint16"
+                    | "u32"
+                    | "uint32"
+                    | "u64"
+                    | "uint64"
+                    | "usize"
+                    | "isize"
+                    | "uintptr"
+                    | "byte"
+                    | "rune"
+                    | "char"
+                    | "float32"
+                    | "float64"
+                    | "f32"
+                    | "f64"
+                    | "bool"
+                    | "string"
+                    | "error"
+                    | "any"
+                    | "interface{}"
+            )
+    }
+
+    fn check_type_name_value_position(&mut self, name: &str, span: Span) {
+        if self.lookup_kind(name).is_some() || self.ck.fns.contains_key(name) {
+            return;
+        }
+        if self.is_type_name(name) {
+            self.emit_e1002(
+                span,
+                format!("`{}` is a type, not a value (HYB-E1002)", name),
+                "type names cannot be used in value positions (assignment, argument, arithmetic, return)",
+            );
         }
     }
 
@@ -3736,5 +3832,45 @@ fn main() {
             "unexpected diagnostics: {:?}",
             r.diagnostics
         );
+    }
+
+    #[test]
+    fn rejects_type_name_in_value_positions_778() {
+        for src in [
+            "struct holder { n int }\nfn main() {\n    x := holder\n    fmt.println(\"{x}\")\n}\n",
+            "struct holder { n int }\nfn take(h holder) int { return h.n }\nfn main() {\n    v := take(holder)\n}\n",
+            "struct holder { n int }\nfn main() {\n    y := holder + 1\n}\n",
+            "struct holder { n int }\nfn make_it() holder {\n    return holder\n}\nfn main() {}\n",
+            "fn main() {\n    x := int\n}\n",
+            "type my_int = int\nfn main() {\n    x := my_int\n}\n",
+            "enum color { red, green }\nfn main() {\n    x := color\n}\n",
+        ] {
+            let r = check(src);
+            assert_eq!(r.verdict, Verdict::Reject, "expected reject for:\n{src}");
+            assert!(
+                error_codes(&r).contains(&"HYB-E1002".to_string()),
+                "expected HYB-E1002, got {:?} for:\n{src}",
+                error_codes(&r)
+            );
+        }
+    }
+
+    #[test]
+    fn accepts_valid_type_usage_controls_778() {
+        for src in [
+            "struct holder { n int }\nfn main() {\n    x := holder{ n: 1 }\n    fmt.println(x.n)\n}\n",
+            "fn main() {\n    x := int(5)\n    fmt.println(x)\n}\n",
+            "struct holder { n int }\nfn main() {\n    p := new(holder)\n    m := make(map[string]int)\n    fmt.println(p, m)\n}\n",
+            "enum color { red, green }\nfn main() {\n    c := red\n    fmt.println(c)\n}\n",
+            "fn main() {\n    var int = 42\n    x := int\n    fmt.println(x)\n}\n",
+        ] {
+            let r = check(src);
+            assert_eq!(
+                r.verdict,
+                Verdict::Accept,
+                "unexpected diagnostics for:\n{src}\n{:?}",
+                r.diagnostics
+            );
+        }
     }
 }
