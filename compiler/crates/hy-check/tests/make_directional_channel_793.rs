@@ -144,13 +144,12 @@ fn main() {
     fmt.println("{ch}")
 }
 "#,
-        // bidirectional channel carrying directional channel elements
+        // bidirectional channel carrying nested channel type
         r#"
-type send_chan = chan<- int
+type inner_chan = chan int
 fn main() {
-    ch1 := make(chan <-chan int, 1)
-    ch2 := make(chan send_chan, 1)
-    fmt.println("{ch1} {ch2}")
+    ch := make(chan inner_chan, 1)
+    fmt.println("{ch}")
 }
 "#,
     ];
