@@ -146,9 +146,10 @@ fn main() {
 "#,
         // bidirectional channel carrying directional channel elements
         r#"
+type send_chan = chan<- int
 fn main() {
     ch1 := make(chan <-chan int, 1)
-    ch2 := make(chan chan<- int, 1)
+    ch2 := make(chan send_chan, 1)
     fmt.println("{ch1} {ch2}")
 }
 "#,
