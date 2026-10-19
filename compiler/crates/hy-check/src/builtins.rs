@@ -11,7 +11,7 @@
 
 use crate::model::{unwrap_parens, Checker};
 use hy_diag::{Diagnostic, Span};
-use hy_syntax::{Expr, ForKind, LitKind, Place, PlaceKind, SelectArmKind, Stmt, UnOp};
+use hy_syntax::{ChanDir, Expr, ForKind, LitKind, Place, PlaceKind, SelectArmKind, Stmt, UnOp};
 
 impl<'a> Checker<'a> {
     /// Pass-B entry: HYB-E2001 on `defer` + HYB-E2005 on builtin calls.
@@ -382,17 +382,33 @@ impl<'a> Checker<'a> {
             } if items.is_empty() => MakeTargetKind::Slice,
             Expr::MapLit { entries, .. } if entries.is_empty() => MakeTargetKind::Map,
             Expr::StructLit {
-                ty: Some(hy_syntax::TypeExpr::Chan { .. }),
+                ty: Some(hy_syntax::TypeExpr::Chan { dir, .. }),
                 fields,
                 ..
-            } if fields.is_empty() => MakeTargetKind::Chan,
+            } if fields.is_empty() => {
+                if *dir == ChanDir::Both {
+                    MakeTargetKind::Chan
+                } else {
+                    let ty_str = match unwrap_parens(e) {
+                        Expr::StructLit { ty: Some(t), .. } => t.render(),
+                        _ => e.render(),
+                    };
+                    MakeTargetKind::DirectionalChan(*dir, ty_str)
+                }
+            }
             Expr::Ident { name, .. } => {
                 let base = Self::base_named_type_str(name);
                 if let Some(ty) = self.type_aliases.get(base) {
                     match self.resolve_type_alias(ty) {
                         hy_syntax::TypeExpr::Slice { .. } => MakeTargetKind::Slice,
                         hy_syntax::TypeExpr::Map { .. } => MakeTargetKind::Map,
-                        hy_syntax::TypeExpr::Chan { .. } => MakeTargetKind::Chan,
+                        hy_syntax::TypeExpr::Chan { dir, .. } => {
+                            if dir == ChanDir::Both {
+                                MakeTargetKind::Chan
+                            } else {
+                                MakeTargetKind::DirectionalChan(dir, name.clone())
+                            }
+                        }
                         _ => MakeTargetKind::Invalid,
                     }
                 } else {
@@ -421,6 +437,18 @@ impl<'a> Checker<'a> {
                         "`make` first argument `{}` must be a slice, map, or channel type (HYB-E2005)",
                         args[0].value.render()
                     ),
+                );
+                return;
+            }
+            MakeTargetKind::DirectionalChan(dir, ty_name) => {
+                let kind_str = match dir {
+                    ChanDir::Recv => "receive-only",
+                    ChanDir::Send => "send-only",
+                    ChanDir::Both => "channel",
+                };
+                self.emit_builtin(
+                    span,
+                    format!("cannot make {kind_str} channel `{ty_name}` (HYB-E2005)"),
                 );
                 return;
             }
@@ -533,6 +561,7 @@ enum MakeTargetKind {
     Slice,
     Map,
     Chan,
+    DirectionalChan(ChanDir, String),
     Invalid,
 }
 
