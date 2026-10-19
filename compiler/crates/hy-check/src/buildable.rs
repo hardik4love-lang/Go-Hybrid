@@ -979,13 +979,17 @@ impl<'a> Collector<'a> {
                         "an `any` value must be asserted to a concrete type before its fields can be read",
                     );
                 }
-                let is_enum_variant = match unwrap_parens(base) {
-                    Expr::Ident { name: bname, .. } => {
-                        self.ck.enums.get(bname).is_some_and(|vs| vs.iter().any(|v| v == name))
+                let is_type_member = match unwrap_parens(base) {
+                    Expr::Ident { name: bname, .. } if self.is_type_name(bname) => {
+                        let bname_base = Checker::base_named_type_str(bname);
+                        let member_head = name.split('[').next().unwrap_or(name);
+                        self.ck.enums.get(bname_base).is_some_and(|vs| vs.iter().any(|v| v == name))
+                            || self.ck.fns.contains_key(&format!("{bname_base}.{member_head}"))
+                            || self.ck.method_decls.contains_key(&(bname_base.to_string(), member_head.to_string()))
                     }
                     _ => false,
                 };
-                if !is_enum_variant {
+                if !is_type_member {
                     self.expr(base);
                 }
             }
@@ -3871,6 +3875,7 @@ fn main() {
             "struct holder { n int }\nfn main() {\n    p := new(holder)\n    ch := make(chan int, 1)\n    fmt.println(p, ch)\n}\n",
             "enum color { red, green }\nfn main() {\n    c := red\n    fmt.println(c)\n}\n",
             "enum color { red, green }\nfn main() {\n    c := color.red\n    fmt.println(c)\n}\n",
+            "struct greeting { name string }\nfn greeting.build(base string) greeting { return greeting{ name: base } }\nfn main() {\n    g := greeting.build(\"test\")\n    fmt.println(g.name)\n}\n",
             "fn main() {\n    var int = 42\n    x := int\n    fmt.println(x)\n}\n",
         ] {
             let r = check(src);

@@ -94,6 +94,15 @@ fn main() {
     holder = 5
 }
 "#,
+        // struct field access on bare type
+        r#"
+struct holder {
+    n int
+}
+fn main() {
+    x := holder.n
+}
+"#,
     ];
 
     for src in cases {
@@ -177,6 +186,19 @@ fn take(x int) int {
 fn main() {
     f := take
     fmt.println(f(1))
+}
+"#,
+        // Associated function on struct
+        r#"
+struct greeting {
+    name string
+}
+fn greeting.build(base string) greeting {
+    return greeting{ name: base }
+}
+fn main() {
+    g := greeting.build("Hybrid")
+    fmt.println(g.name)
 }
 "#,
     ];
