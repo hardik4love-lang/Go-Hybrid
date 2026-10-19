@@ -41,6 +41,7 @@ fn take(h holder) int {
 }
 fn main() {
     v := take(holder)
+    fmt.println("{v}")
 }
 "#,
         // b3_arith: binary arithmetic operand
@@ -50,6 +51,7 @@ struct holder {
 }
 fn main() {
     y := holder + 1
+    fmt.println("{y}")
 }
 "#,
         // b4_return: return value
@@ -66,6 +68,7 @@ fn main() {}
         r#"
 fn main() {
     x := int
+    fmt.println("{x}")
 }
 "#,
         // type alias in value position
@@ -73,6 +76,7 @@ fn main() {
 type my_int = int
 fn main() {
     x := my_int
+    fmt.println("{x}")
 }
 "#,
         // enum in value position
@@ -83,6 +87,7 @@ enum color {
 }
 fn main() {
     x := color
+    fmt.println("{x}")
 }
 "#,
         // assignment target
@@ -101,6 +106,7 @@ struct holder {
 }
 fn main() {
     x := holder.n
+    fmt.println("{x}")
 }
 "#,
     ];
@@ -109,20 +115,13 @@ fn main() {
         let r = check(src);
         assert_eq!(r.verdict, Verdict::Reject, "expected reject for:\n{src}");
         assert!(
-            error_codes(&r).contains(&"HYB-E1002".to_string()),
-            "expected HYB-E1002, got {:?} for:\n{src}",
+            r.diagnostics.iter().any(|d| {
+                d.code == "HYB-E1002"
+                    && (d.message.contains("is a type, not a value")
+                        || d.message.contains("is a type, not a variable"))
+            }),
+            "expected type name error diagnostic, got: {:?}",
             r.diagnostics
-        );
-        let diag = r
-            .diagnostics
-            .iter()
-            .find(|d| d.code == "HYB-E1002")
-            .expect("must find HYB-E1002 diagnostic");
-        assert!(
-            diag.message.contains("is a type, not a value")
-                || diag.message.contains("is a type, not a variable"),
-            "unexpected message: {}",
-            diag.message
         );
     }
 }
