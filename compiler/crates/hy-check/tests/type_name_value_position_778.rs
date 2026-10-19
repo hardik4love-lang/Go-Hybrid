@@ -145,8 +145,8 @@ struct holder {
 }
 fn main() {
     p := new(holder)
-    m := make(map[string]int)
-    fmt.println(p, m)
+    ch := make(chan int, 1)
+    fmt.println(p, ch)
 }
 "#,
         // Enum variant as value
@@ -157,7 +157,8 @@ enum color {
 }
 fn main() {
     c := red
-    fmt.println(c)
+    c2 := color.red
+    fmt.println(c, c2)
 }
 "#,
         // Shadowed local variable named same as type
