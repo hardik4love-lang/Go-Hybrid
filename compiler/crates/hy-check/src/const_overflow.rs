@@ -1619,38 +1619,49 @@ pub(crate) fn const_key_fold_with(
         _ => None,
     }
 }
-#[test]
-fn map_lit_duplicate_constant_keys_rejected() {
-    let cases = [
-        "fn main() { m := map[int]string{1: \"a\", 1: \"b\"}; _ = m }",
-        "fn main() { m := map[string]int{\"a\": 1, \"a\": 2}; _ = m }",
-        "fn main() { m := map[string]int{\"a\" + \"b\": 1, \"ab\": 2}; _ = m }",
-        "const k = 1\nfn main() { m := map[int]string{k: \"a\", 1: \"b\"}; _ = m }",
-        "fn main() { m := map[bool]int{true: 1, true: 2}; _ = m }",
-        "fn main() { m := map[int]int{1 + 1: 0, 2: 0}; _ = m }",
-    ];
-    for src in cases {
-        let r = crate::check(src);
-        assert_eq!(r.verdict, crate::model::Verdict::Reject, "expected reject for:\n{src}");
-        assert!(
-            r.diags.iter().any(|d| d.code == "HYB-E1002" && d.msg.contains("duplicate key")),
-            "expected HYB-E1002 duplicate key diagnostic, got {:?} for:\n{src}",
-            r.diags
-        );
-    }
-}
+#[cfg(test)]
+mod map_lit_duplicate_tests {
+    use crate::{check_file, Verdict};
+    use hy_syntax::parse_file;
 
-#[test]
-fn map_lit_distinct_constant_keys_accepted() {
-    let cases = [
-        "fn main() { m := map[int]string{1: \"a\", 2: \"b\"}; _ = m }",
-        "fn main() { m := map[string]int{\"a\": 1, \"b\": 2}; _ = m }",
-        "const k = 1\nfn main() { m := map[int]string{k: \"a\", 2: \"b\"}; _ = m }",
-        "fn main() { m := map[bool]int{true: 1, false: 2}; _ = m }",
-    ];
-    for src in cases {
-        let r = crate::check(src);
-        assert_eq!(r.verdict, crate::model::Verdict::Accept, "expected accept for:\n{src}");
+    fn check(src: &str) -> crate::CheckResult {
+        let ast = parse_file("test.hy", src).expect("test snippet must parse");
+        check_file(&ast)
+    }
+
+    #[test]
+    fn map_lit_duplicate_constant_keys_rejected() {
+        let cases = [
+            "fn main() { m := map[int]string{1: \"a\", 1: \"b\"}; _ = m }",
+            "fn main() { m := map[string]int{\"a\": 1, \"a\": 2}; _ = m }",
+            "fn main() { m := map[string]int{\"a\" + \"b\": 1, \"ab\": 2}; _ = m }",
+            "const k = 1\nfn main() { m := map[int]string{k: \"a\", 1: \"b\"}; _ = m }",
+            "fn main() { m := map[bool]int{true: 1, true: 2}; _ = m }",
+            "fn main() { m := map[int]int{1 + 1: 0, 2: 0}; _ = m }",
+        ];
+        for src in cases {
+            let r = check(src);
+            assert_eq!(r.verdict, Verdict::Reject, "expected reject for:\n{src}");
+            assert!(
+                r.diagnostics.iter().any(|d| d.code == "HYB-E1002" && d.msg.contains("duplicate key")),
+                "expected HYB-E1002 duplicate key diagnostic, got {:?} for:\n{src}",
+                r.diagnostics
+            );
+        }
+    }
+
+    #[test]
+    fn map_lit_distinct_constant_keys_accepted() {
+        let cases = [
+            "fn main() { m := map[int]string{1: \"a\", 2: \"b\"}; _ = m }",
+            "fn main() { m := map[string]int{\"a\": 1, \"b\": 2}; _ = m }",
+            "const k = 1\nfn main() { m := map[int]string{k: \"a\", 2: \"b\"}; _ = m }",
+            "fn main() { m := map[bool]int{true: 1, false: 2}; _ = m }",
+        ];
+        for src in cases {
+            let r = check(src);
+            assert_eq!(r.verdict, Verdict::Accept, "expected accept for:\n{src}");
+        }
     }
 }
 
