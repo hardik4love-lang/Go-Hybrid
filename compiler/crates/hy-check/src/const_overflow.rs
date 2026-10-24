@@ -1654,4 +1654,3 @@ fn map_lit_distinct_constant_keys_accepted() {
     }
 }
 
-}
