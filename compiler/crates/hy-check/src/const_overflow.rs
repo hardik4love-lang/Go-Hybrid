@@ -1643,7 +1643,7 @@ mod map_lit_duplicate_tests {
             let r = check(src);
             assert_eq!(r.verdict, Verdict::Reject, "expected reject for:\n{src}");
             assert!(
-                r.diagnostics.iter().any(|d| d.code == "HYB-E1002" && d.msg.contains("duplicate key")),
+                r.diagnostics.iter().any(|d| d.code == "HYB-E1002" && d.message.contains("duplicate key")),
                 "expected HYB-E1002 duplicate key diagnostic, got {:?} for:\n{src}",
                 r.diagnostics
             );
