@@ -4886,4 +4886,3 @@ fn const_string_bounds_validated() {
     }
 }
 
-}
