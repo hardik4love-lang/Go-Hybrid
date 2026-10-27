@@ -370,7 +370,7 @@ impl<'a> Checker<'a> {
                 self.named_int_of(&ty)
             }
             Expr::Unary { op, operand, .. } => {
-                if matches!(op, hy_syntax::UnOp::Neg | hy_syntax::UnOp::Plus | hy_syntax::UnOp::BitNot) {
+                if matches!(op, hy_syntax::UnOp::Neg) {
                     return self.typed_int_bound(st, operand);
                 }
                 let ty = self.ty_of_expr(st, e)?;
@@ -458,7 +458,7 @@ impl<'a> Checker<'a> {
                 }
                 let sname = Self::base_named_type(&cur)?;
                 let sdecl = self.structs.get(&sname)?;
-                sdecl.fields.iter().find(|f| f.name == *name).map(|f| f.ty.clone())
+                sdecl.iter().find(|(fname, _)| fname == name).map(|(_, ty)| ty.clone())
             }
             _ => None,
         }
