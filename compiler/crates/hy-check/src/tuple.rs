@@ -394,7 +394,9 @@ impl<'a> Checker<'a> {
                     }
                     _ => {}
                 }
-                if self.types.contains_key(name.as_str())
+                if self.structs.contains_key(name.as_str())
+                    || self.type_aliases.contains_key(name.as_str())
+                    || self.enums.contains_key(name.as_str())
                     || matches!(
                         name.as_str(),
                         "bool" | "byte" | "rune" | "string" | "uintptr"
