@@ -154,7 +154,7 @@ fn main() {
 "#;
     let c = codes(src);
     assert!(
-        c.is_empty>,
+        c.is_empty(),
         "expected 0 diagnostics for valid multi-value forwarding, got: {c:?}"
     );
 }
