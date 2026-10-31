@@ -410,7 +410,7 @@ struct Collector<'a> {
 
 fn type_uses_set(t: &TypeExpr) -> bool {
     match t {
-        TypeExpr::Named { name, .. } => name == "set" || name.starts_with("set["),
+        TypeExpr::Named { name, .. } => name.starts_with("set["),
         TypeExpr::Pointer { to, .. } => type_uses_set(to),
         TypeExpr::Slice { elem, .. }
         | TypeExpr::Array { elem, .. }
