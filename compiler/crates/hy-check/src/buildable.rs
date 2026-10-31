@@ -752,13 +752,9 @@ impl<'a> Collector<'a> {
         let collides = match name {
             "some" | "option" | "none" | "hy_pop" => true,
             "set" => {
-                if kind != "fn" && kind != "const" {
-                    // struct set, type set, enum set always collide with stdlib set type
-                    true
-                } else {
-                    // fn set, const set collide when the set prelude is active in the package
-                    uses_set
-                }
+                // Any declaration named `set` collides only when the set prelude is active in the package.
+                // Standalone user-declared `struct set` (e.g. #2421 regression test) is accepted when no set prelude is used.
+                uses_set
             }
             "len" => {
                 // fn len, const len collide when set or pop prelude is active because

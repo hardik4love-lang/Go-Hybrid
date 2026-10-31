@@ -184,7 +184,39 @@ fn main() {
 }
 
 #[test]
-fn test_struct_set_collides_with_prelude_777() {
+fn test_struct_set_collides_when_set_prelude_used_777() {
+    let src = r#"
+struct set {
+    n int
+}
+
+fn main() {
+    s := set[int]{}
+    s.insert(1)
+    fmt.println(s.contains(1))
+}
+"#;
+    let r = check(src);
+    assert_rejects_e1002(&r, "user struct set with set prelude");
+}
+
+#[test]
+fn test_type_set_collides_when_set_prelude_used_777() {
+    let src = r#"
+type set = int
+
+fn main() {
+    s := set[int]{}
+    s.insert(1)
+    fmt.println(s.contains(1))
+}
+"#;
+    let r = check(src);
+    assert_rejects_e1002(&r, "user type alias set with set prelude");
+}
+
+#[test]
+fn test_struct_set_alone_without_prelude_accepted_777() {
     let src = r#"
 struct set {
     n int
@@ -196,21 +228,12 @@ fn main() {
 }
 "#;
     let r = check(src);
-    assert_rejects_e1002(&r, "user struct set");
-}
-
-#[test]
-fn test_type_set_collides_with_prelude_777() {
-    let src = r#"
-type set = int
-
-fn main() {
-    var s set = 5
-    fmt.println(s)
-}
-"#;
-    let r = check(src);
-    assert_rejects_e1002(&r, "user type alias set");
+    assert_eq!(
+        r.verdict,
+        Verdict::Accept,
+        "user struct set without set prelude remains accepted: {:?}",
+        r.diagnostics
+    );
 }
 
 #[test]
